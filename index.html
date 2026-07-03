@@ -616,7 +616,7 @@ function searchRows(q) {
 function card(o, delay) {
   return `<div class="ccard ${o.hits>=3?'hot':''}" style="animation-delay:${delay||0}ms">
     ${addBtn(o.code, o.title, o.credits)}
-    <div class="ctitle" ${small?'style="font-size:14.5px"':''}>${o.title}</div>
+    <div class="ctitle">${o.title}</div>
     <div class="ccode">${o.code} · ${o.credits} cr${o.su?' · pass/fail ok':''}${o.allCodes.length>1 ? ' · same course as ' + o.allCodes.filter(c=>c!==o.code).join(', ') : ''}</div>
     <div class="whyrow"><span class="why g">counts ${o.hits}×</span>${o.subjects.map(s => `<span class="why">${DATA.subjectNames[s]||s}</span>`).join('')}${(o.at||[]).map(a => `<span class="why" style="background:#fdf3e0;color:#8a5a00">${a}</span>`).join('')}${reqFor(o.allCodes).slice(0,3).map(r => `<span class="why p">◆ ${r}</span>`).join('')}</div>
     <div class="factrow">${starHtml(o.rating)} ${diffChip(o.diff)}<span>🕐 ${o.days.join(', ')||'TBA'}${o.times[0]?' · '+o.times[0].toLowerCase():''}</span><a href="${o.url}" target="_blank">roster ↗</a></div>
@@ -887,6 +887,16 @@ window.wizSearch = ev => {
 function drawWiz() {
   const dots = `<div class="stepdots">${[1,2,3,4].map(i => `<span class="${i<=wizStep?'on':''}"></span>`).join('')}</div>`;
   const w = $('#wizcard');
+  if (wizStep === 0) {
+    w.innerHTML = `<h2>Welcome to Course Optimizer 🎓</h2>
+      <p class="sub">The cheat code for picking classes — three ideas, that's the whole app:</p>
+      <div class="wopt" style="cursor:default"><span class="em">🎯</span><div><b>One course can tick many boxes</b><small>Some classes count toward 2–5 of your requirements at once. We find every one of them, across all 4,464 Fall courses.</small></div></div>
+      <div class="wopt" style="cursor:default"><span class="em">⚖️</span><div><b>Compare rivals before you commit</b><small>Physics vs econ vs stats? Tap VS on courses and see side-by-side which fills more of YOUR requirements.</small></div></div>
+      <div class="wopt" style="cursor:default"><span class="em">🗓</span><div><b>Plan it, track it, done</b><small>Drop picks into semesters, watch your degree progress bar fill, and bring the plan to your advisor.</small></div></div>
+      <div class="bigrow"><button class="bigbtn" onclick="wizNext()">Set me up — takes 30 seconds →</button></div>
+      <div class="bigrow" style="margin-top:6px"><button class="ghost" onclick="closeWiz()">Skip, just let me look around</button></div>`;
+    return;
+  }
   if (wizStep === 1) {
     w.innerHTML = dots + `<h2>What are you into?</h2>
       <p class="sub">Every major, minor, or subject you're even <i>considering</i>. More interests = more double-counting courses found.</p>
@@ -1040,113 +1050,7 @@ $('#cmpmodal').onclick = e => { if (e.target.id === 'cmpmodal') $('#cmpmodal').c
 
 function refresh() { buildReqMap(); drawFind(); drawPlan(); drawProgress(); drawCmpBar(); }
 refresh();
-if (firstRun) openWiz(1);
-
-// ── AI advisor ──
-let chatMsgs = [];
-window.openChat = () => { $('#fab').classList.add('hidden'); $('#chatp').classList.remove('hidden');
-  if (!chatMsgs.length) addMsg('ai', "Hey! I can see your whole situation — credits, plan, tracked programs, and every Fall 2026 course. Ask me anything:\n\n• \"best schedule for anthro + premed, no Fridays\"\n• \"I hate 8ams and want chill classes\"\n• \"what fills my stats requirement AND my minor?\"");
-  $('#chatq').focus(); };
-window.closeChat = () => { $('#chatp').classList.add('hidden'); $('#fab').classList.remove('hidden'); };
-function addMsg(who, text, codes) {
-  const log = $('#chatlog');
-  const d = document.createElement('div');
-  d.className = 'cmsg ' + who;
-  d.textContent = text;
-  if (codes && codes.length) {
-    for (const code of codes) {
-      const row = DATA.catalog.find(c => c[0] + ' ' + c[1] === code);
-      if (!row) continue;
-      const rec = document.createElement('div');
-      rec.className = 'crec';
-      rec.innerHTML = `<b>${code}</b> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row[2]}</span><span style="color:var(--mut)">${row[3]}cr</span><button class="addmini" onclick="togglePop(event,&quot;${esc(code)}&quot;,&quot;${esc(row[2])}&quot;,${credNum(row[3])})">＋ Add</button>`;
-      d.appendChild(rec);
-    }
-  }
-  log.appendChild(d); log.scrollTop = log.scrollHeight;
-}
-function chatContext() {
-  const cand = OV.filter(passes).sort((a, b) => smart(b) - smart(a)).slice(0, 60)
-    .map(o => ({ code: o.code, t: o.title.slice(0, 50), cr: o.credits, counts: o.hits, toward: o.subjects, rating: o.rating || null, difficulty: o.diff || null, meets: (o.days.join(',') || 'TBA') + ' ' + (o.times[0] || '') }));
-  return {
-    interests: cfg.subjects.map(s => DATA.subjectNames[s] || s),
-    rules: { blockedDays: cfg.noDays, earliest: cfg.earliest, latest: cfg.latest, creditsPerSem: cfg.loadMin + '-' + cfg.loadMax },
-    creditsEarned: earnedTotal(), creditsBanked: mycred.map(m => m.code + ' ' + m.title + ' (' + m.cr + 'cr)'),
-    semestersLeft: cfg.semLeft, target: cfg.total,
-    trackedPrograms: tracked.map(p => ({ name: p, slots: (DATA.programs[p]?.items || []).map(i => i.name + (i.options ? ' [' + i.options.join(', ') + ']' : '')) })),
-    currentPlan: Object.fromEntries(semLabels().map((s, i) => [s, plan[i + 1].map(c => c.code)])),
-    unmetRequirements: DATA.audit.filter((r, i) => !(checks['r' + i] !== undefined ? checks['r' + i] : (!cfg.fresh && r.met))).map(r => r.name),
-    topCandidateCourses: cand,
-  };
-}
-async function sendChat() {
-  const q = $('#chatq').value.trim();
-  if (!q) return;
-  $('#chatq').value = '';
-  addMsg('me', q);
-  chatMsgs.push({ role: 'user', content: q });
-  const log = $('#chatlog');
-  const tp = document.createElement('div'); tp.className = 'cmsg ai typing'; tp.innerHTML = '<span></span><span></span><span></span>';
-  log.appendChild(tp); log.scrollTop = log.scrollHeight;
-  try {
-    const r = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ messages: chatMsgs, context: chatContext() }) });
-    const j = await r.json();
-    tp.remove();
-    if (j.error) { addMsg('ai', '⚠️ ' + j.error); return; }
-    let text = j.text || '';
-    let codes = [];
-    const m = text.match(/^COURSES:\s*(.+)$/m);
-    if (m) { codes = m[1].split('|').map(x => x.trim()).filter(Boolean); text = text.replace(m[0], '').trim(); }
-    chatMsgs.push({ role: 'assistant', content: j.text });
-    addMsg('ai', text, codes);
-  } catch (e) {
-    tp.remove();
-    addMsg('ai', location.protocol === 'file:' ? '⚠️ The AI advisor only works on the hosted version (it needs the server API). Deploy to Vercel first!' : '⚠️ Could not reach the advisor: ' + e.message);
-  }
-}
-
-// ── PDF drag & drop on import modal ──
-async function ensurePdfjs() {
-  if (window.pdfjsLib) return;
-  await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-}
-async function pdfToText(file) {
-  await ensurePdfjs();
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  let out = [];
-  for (let p = 1; p <= Math.min(pdf.numPages, 20); p++) {
-    const page = await pdf.getPage(p);
-    const tc = await page.getTextContent();
-    let line = [], lastY = null;
-    for (const it of tc.items) {
-      if (lastY !== null && Math.abs(it.transform[5] - lastY) > 4) { out.push(line.join(' ')); line = []; }
-      line.push(it.str); lastY = it.transform[5];
-    }
-    out.push(line.join(' '));
-  }
-  return out.join('\n');
-}
-(function wireDrop() {
-  const ta = document.getElementById('imptext');
-  if (!ta) return;
-  ta.classList.add('dropzone');
-  ta.placeholder = 'Paste transcript text here — or DRAG YOUR PDF straight onto this box…';
-  ['dragover', 'dragenter'].forEach(ev => ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.add('drag'); }));
-  ['dragleave', 'drop'].forEach(ev => ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.remove('drag'); }));
-  ta.addEventListener('drop', async e => {
-    const f = e.dataTransfer.files[0];
-    if (!f) return;
-    if (f.type === 'application/pdf' || f.name.endsWith('.pdf')) {
-      ta.value = '⏳ reading ' + f.name + '…';
-      try { ta.value = await pdfToText(f); toast('📄 ' + f.name + ' read — hit Import courses'); }
-      catch (err) { ta.value = ''; toast('Could not read that PDF' + (location.protocol === 'file:' ? ' — PDF reading needs the hosted version' : '')); }
-    } else { ta.value = await f.text(); }
-  });
-})();
-
+if (firstRun) openWiz(0);
 </script>
 </body>
 </html>
