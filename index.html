@@ -623,6 +623,26 @@ function burst(x, y, big) {
   }
 }
 const CHEER = ['🎯','🔥','✨','💪','🧠','🚀'];
+const TAKELINES = ['locked. in. 🔒','academic weapon behavior','the registrar fears you','no thoughts just vibes ✅','GPA speedrun continues','decisive?? in this economy??','your advisor could never'];
+let takeN = 0;
+function roastSchedule(acc) {
+  const lines = [];
+  const diffs = acc.map(r => OVMAP[r.code]?.diff || 0).filter(Boolean);
+  const avgD = diffs.length ? diffs.reduce((a, b) => a + b, 0) / diffs.length : 0;
+  const starts = acc.flatMap(r => (r.times || []).map(t => toMin(String(t).split('-')[0]))).filter(x => x != null);
+  const earliest = starts.length ? Math.min(...starts) : null;
+  const friFree = !acc.some(r => (r.days || []).some(d => String(d).includes('F')));
+  const hits = acc.map(r => OVMAP[r.code]?.hits || 1);
+  const avgHits = hits.reduce((a, b) => a + b, 0) / Math.max(1, hits.length);
+  if (friFree) lines.push('Friday? don\u2019t know her.');
+  if (earliest != null && earliest >= 11 * 60) lines.push('first class at ' + Math.floor(earliest / 60) % 12 + 'pm-ish is a lifestyle');
+  if (earliest != null && earliest < 8.5 * 60) lines.push('an 8am?? your parents must be so proud');
+  if (avgD && avgD <= 2.2) lines.push('not one hard class. academic weapon (derogatory)');
+  if (avgD >= 3.4) lines.push('you chose violence. respect.');
+  if (avgHits >= 2.4) lines.push('speedrunning graduation fr');
+  if (!lines.length) lines.push('advisors could never');
+  return lines.slice(0, 2).join(' \u00b7 ');
+}
 window.pickSem = (ev,i,code,title,cr) => {
   ev.stopPropagation();
   const before = plan[i].reduce((a,c)=>a+c.cr,0);
@@ -1414,7 +1434,9 @@ function drawDeck() {
     const saved = acc.reduce((a, r) => a + Math.max(0, ((OVMAP[r.code]?.hits || 1) - 1)) * r.cr * TUITION_PER_CR, 0);
     const friFree = !acc.some(r => (r.days || []).some(d => String(d).includes('F')));
     done.classList.remove('hidden');
+    const roast = roastSchedule(acc);
     done.innerHTML = `<div class="big">🍳</div><h2>YOUR SEMESTER IS COOKED</h2>
+      <p style="font-size:15px;font-weight:700;color:var(--gold);margin:2px 0 4px">${roast}</p>
       <div class="stats">
         <div class="stat"><b>${cr}</b><span>credits</span></div>
         <div class="stat"><b>${reqs}</b><span>reqs killed</span></div>
@@ -1479,6 +1501,7 @@ window.swipeGo = dir => {
     grid.rows.push({code: o.code, title: o.title, cr: credNum(o.credits), days: o.days, times: o.times, codes: o.allCodes, mk: {}, st: 2});
     grid.skipVibe = 1; save('grid', grid);
     burst(innerWidth / 2, innerHeight / 2, false);
+    toast(TAKELINES[takeN++ % TAKELINES.length]);
     buildDeck();
   }
   setTimeout(() => { drawDeck(); drawGrid(); drawPlan(); }, 180);
@@ -1517,6 +1540,8 @@ window.shareCard = () => {
   x.fillText('MY FALL IS', 540, 300); x.fillText('COOKED 🍳', 540, 405);
   x.font = '600 40px -apple-system, sans-serif'; x.globalAlpha = .85;
   x.fillText('planned in ' + (acc.length * 4) + ' seconds of swiping', 540, 480); x.globalAlpha = 1;
+  x.font = 'italic 700 42px -apple-system, sans-serif'; x.fillStyle = '#ffd66e';
+  x.fillText('\u201c' + roastSchedule(acc) + '\u201d', 540, 560); x.fillStyle = '#fff';
   let y = 640;
   x.textAlign = 'left';
   for (const r of acc.slice(0, 7)) {
