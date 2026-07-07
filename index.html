@@ -357,7 +357,7 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
     <button class="bigbtn" style="max-width:220px;margin:14px auto 0;display:block;flex:none" onclick="askGo()">let's go</button>
   </div>
   <div id="tunerow" class="hidden" style="margin:10px auto;max-width:480px;display:flex;gap:8px">
-    <input class="search" id="tunein" style="flex:1" placeholder="“no fridays, premed, chill only”" onkeydown="if(event.key==='Enter')tuneDeck()">
+    <input class="search" id="tunein" style="flex:1" placeholder="tune (“no fridays”) or ask anything…" onkeydown="if(event.key==='Enter')tuneDeck()">
     <button class="add" style="position:static" onclick="tuneDeck()">go</button>
   </div>
   <div class="deckwrap"><div id="deck"></div></div>
@@ -1387,6 +1387,7 @@ window.askGo = () => {
   }
   if (t.length < 2 && !askSel.size) { toast('tap a chip or type anything'); return; }
   const v = vibeParse(t);
+  if (!askSel.size && looksLikeQuestion(t, v)) { chatAsk(t); return; }
   if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
   if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
   if (v.earliest) cfg.earliest = v.earliest;
@@ -1487,9 +1488,16 @@ window.swipeUndo = () => {
   if (last.taken) { grid.rows = grid.rows.filter(r => r.code !== last.o.code); save('grid', grid); }
   buildDeck(); deck.unshift(last.o); drawDeck(); drawGrid();
 };
+window.chatAsk = q => {
+  if (typeof openChat !== 'function') { toast('advisor lives on the hosted version'); return; }
+  openChat();
+  setTimeout(() => { $('#chatq').value = q; sendChat(); }, 150);
+};
+const looksLikeQuestion = (t, v) => !v.subjects.length && !v.noDays.length && !v.earliest && !v.maxDiff && !v.premed && t.split(/\s+/).length >= 3;
 window.tuneDeck = () => {
   const t = $('#tunein').value.trim(); if (!t) return;
   const v = vibeParse(t);
+  if (looksLikeQuestion(t, v)) { $('#tunein').value = ''; chatAsk(t); return; }
   if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
   if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
   if (v.earliest) cfg.earliest = v.earliest;
