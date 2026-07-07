@@ -1386,6 +1386,27 @@ function buildDeck() {
     const m = parseMeets(o.days, o.times);
     return !(m.length && meets.some(pm => meetsConflict(pm, m)));
   }).slice(0, 40);
+  if (deck.length < 10) {
+    const have = new Set([...deck.map(o => o.code), ...acc.map(r => r.code)]);
+    const fillers = DATA.catalog
+      .filter(c => cfg.subjects.includes(c[0]) && +c[1][0] <= 4 && credNum(c[3]) >= 3 && rowPasses(c) && !have.has(c[0] + ' ' + c[1]))
+      .map(c => {
+        const code = c[0] + ' ' + c[1];
+        let rating = 0, diff = 0;
+        const R = DATA.ratings[code]; if (R) { rating = R[0]; diff = R[1]; }
+        return {code, allCodes: [code, ...((c[5] || '').split(', ').filter(Boolean))], title: c[2], credits: c[3], lvl: +c[1][0],
+          hits: 1, subjects: [c[0]], days: (c[4] || '').split(', ').filter(Boolean), times: (c[6] || '').split('; ').filter(Boolean),
+          su: c[7], fws: c[8], at: c[9] || [], rating, diff,
+          url: `https://classes.cornell.edu/browse/roster/FA26/class/${c[0]}/${c[1]}`};
+      })
+      .sort((a, b) => (b.rating - a.rating) || (a.lvl - b.lvl))
+      .filter(o => {
+        const m = parseMeets(o.days, o.times);
+        const meets = acc.map(r => parseMeets(r.days || [], r.times || []));
+        return !(m.length && meets.some(pm => meetsConflict(pm, m)));
+      });
+    deck = deck.concat(fillers.slice(0, 30 - deck.length));
+  }
 }
 function moneyLine(o) { return o.hits > 1 ? '💸 saves ≈ $' + ((o.hits - 1) * credNum(o.credits) * TUITION_PER_CR).toLocaleString() : ''; }
 const ASKCHIPS = [['Psych','PSYCH'],['Econ','ECON'],['CS','CS'],['Bio','BIOG'],['Gov','GOVT'],['English','ENGL'],['Philosophy','PHIL'],['Premed','!premed'],['No Fridays','!nofri'],['No 8ams','!no8']];
@@ -1462,7 +1483,7 @@ function drawDeck() {
     el.style.zIndex = 10 - i;
     el.innerHTML = `
       <div class="stamp take">TAKE</div><div class="stamp nah">NAH</div>
-      <div class="kills">🎯 one class, ${o.hits} requirements</div>
+      <div class="kills">${o.hits > 1 ? '🎯 one class, ' + o.hits + ' requirements' : '⭐ solid pick for ' + (DATA.subjectNames[o.subjects[0]] || o.subjects[0])}</div>
       <h3>${o.title}</h3><div class="code">${o.code} · ${o.credits} credits</div>
       <div class="mid">
         <div class="subjrow">${o.subjects.map(s => `<span class="why">${DATA.subjectNames[s] || s}</span>`).join('')}</div>
