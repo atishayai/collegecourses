@@ -1450,6 +1450,17 @@ function drawDeck() {
   $('#crfill').style.width = Math.min(100, cr / CR_TARGET * 100) + '%';
   $('#crlabel').textContent = cr + ' / ' + CR_TARGET + ' cr';
   const done = $('#deckdone'), wrap = document.querySelector('.deckwrap'), btns = document.querySelector('.deckbtns');
+  if (!deck.length && !acc.length) {
+    wrap.classList.add('hidden'); btns.classList.add('hidden');
+    done.classList.remove('hidden');
+    done.innerHTML = `<div class="big">💀</div><h2>you said nah to everything</h2>
+      <p style="color:var(--ink2);font-size:14px;margin:4px 0 14px">respect. run it back or switch it up.</p>
+      <div class="bigrow" style="max-width:340px;margin:0 auto">
+        <button class="bigbtn" onclick="buildDeck();drawDeck()">🔄 run it back</button>
+        <button class="ghost" onclick="localStorage.removeItem(KP+'vibed');drawDeck()">change vibe</button>
+      </div>`;
+    return;
+  }
   if (cr >= 14 || (!deck.length && acc.length)) {
     wrap.classList.add('hidden'); btns.classList.add('hidden');
     const reqs = acc.reduce((a, r) => a + Math.max(1, (OVMAP[r.code]?.hits || 1)), 0);
