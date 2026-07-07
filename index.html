@@ -349,6 +349,12 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
     <div class="crpill"><div id="crfill"></div><span id="crlabel">0 / 15 cr</span></div>
     <button class="tunebtn" onclick="document.getElementById('tunerow').classList.toggle('hidden')">🎛 tune</button>
   </div>
+  <div id="swipeask" class="hidden" style="text-align:center;padding:70px 20px">
+    <h2 style="font-size:26px;font-weight:850;letter-spacing:-.5px;margin-bottom:6px">what are you into?</h2>
+    <p style="color:var(--ink2);font-size:14px;margin-bottom:16px">one answer. then just swipe.</p>
+    <input class="search" id="askin" style="max-width:440px;margin:0 auto;display:block;text-align:center" placeholder="psych · econ · cs · “premed, no fridays”" onkeydown="if(event.key==='Enter')askGo()">
+    <button class="bigbtn" style="max-width:220px;margin:14px auto 0;display:block;flex:none" onclick="askGo()">let's go</button>
+  </div>
   <div id="tunerow" class="hidden" style="margin:10px auto;max-width:480px;display:flex;gap:8px">
     <input class="search" id="tunein" style="flex:1" placeholder="“no fridays, premed, chill only”" onkeydown="if(event.key==='Enter')tuneDeck()">
     <button class="add" style="position:static" onclick="tuneDeck()">go</button>
@@ -359,7 +365,7 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
     <button class="db undo" onclick="swipeUndo()">↩</button>
     <button class="db take" onclick="swipeGo(1)">♥</button>
   </div>
-  <p class="note" style="text-align:center">left = nah · right = take · every card already fits your schedule, zero conflicts guaranteed</p>
+
   <div id="deckdone" class="hidden" style="text-align:center;padding:30px 16px"></div>
 </section>
 
@@ -1359,7 +1365,25 @@ function buildDeck() {
   }).slice(0, 40);
 }
 function moneyLine(o) { return o.hits > 1 ? '💸 saves ≈ $' + ((o.hits - 1) * credNum(o.credits) * TUITION_PER_CR).toLocaleString() : ''; }
+window.askGo = () => {
+  const t = $('#askin').value.trim();
+  if (t.length < 2) { toast('anything — even one word'); return; }
+  const v = vibeParse(t);
+  if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
+  if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
+  if (v.earliest) cfg.earliest = v.earliest;
+  if (v.maxDiff) cfg.maxDiff = v.maxDiff;
+  save('cfg4', cfg); save('vibed', 1);
+  [OV, OVMAP] = computeOverlaps(); buildDeck(); drawDeck();
+  burst(innerWidth / 2, 200, false);
+};
 function drawDeck() {
+  const needAsk = DATA.hideNerd && !store('vibed');
+  $('#swipeask').classList.toggle('hidden', !needAsk);
+  document.querySelector('.deckwrap').style.display = needAsk ? 'none' : '';
+  document.querySelector('.deckbtns').style.display = needAsk ? 'none' : '';
+  document.querySelector('.swipetop').style.display = needAsk ? 'none' : '';
+  if (needAsk) { $('#deckdone').classList.add('hidden'); return; }
   const acc = deckAccepted();
   const cr = acc.reduce((a, r) => a + r.cr, 0);
   $('#crfill').style.width = Math.min(100, cr / CR_TARGET * 100) + '%';
@@ -1375,7 +1399,6 @@ function drawDeck() {
       <div class="stats">
         <div class="stat"><b>${cr}</b><span>credits</span></div>
         <div class="stat"><b>${reqs}</b><span>reqs killed</span></div>
-        <div class="stat"><b>$${saved.toLocaleString()}</b><span>tuition not wasted</span></div>
         ${friFree ? '<div class="stat"><b>0</b><span>friday classes</span></div>' : ''}
       </div>
       <div class="bigrow" style="max-width:420px;margin:0 auto">
@@ -1396,7 +1419,7 @@ function drawDeck() {
     el.style.zIndex = 10 - i;
     el.innerHTML = `
       <div class="stamp take">TAKE</div><div class="stamp nah">NAH</div>
-      <div class="kills">🎯 counts ${o.hits}× ${moneyLine(o) ? '<span class="money">' + moneyLine(o) + '</span>' : ''}</div>
+      <div class="kills">🎯 one class, ${o.hits} requirements</div>
       <h3>${o.title}</h3><div class="code">${o.code} · ${o.credits} credits</div>
       <div class="mid">
         <div class="subjrow">${o.subjects.map(s => `<span class="why">${DATA.subjectNames[s] || s}</span>`).join('')}</div>
