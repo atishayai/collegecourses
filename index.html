@@ -1389,7 +1389,7 @@ function buildDeck() {
   if (deck.length < 10) {
     const have = new Set([...deck.map(o => o.code), ...acc.map(r => r.code)]);
     const fillers = DATA.catalog
-      .filter(c => cfg.subjects.includes(c[0]) && +c[1][0] <= 4 && credNum(c[3]) >= 3 && rowPasses(c) && !have.has(c[0] + ' ' + c[1]))
+      .filter(c => cfg.subjects.includes(c[0]) && +c[1][0] <= 4 && credNum(c[3]) >= 3 && cr + credNum(c[3]) <= 18 && rowPasses(c) && !have.has(c[0] + ' ' + c[1]))
       .map(c => {
         const code = c[0] + ' ' + c[1];
         let rating = 0, diff = 0;
@@ -1515,6 +1515,7 @@ function wireDrag(el, o) {
 }
 window.swipeGo = dir => {
   const o = deck[0]; if (!o) return;
+  if (dir === 1 && deckAccepted().reduce((a, r) => a + r.cr, 0) + credNum(o.credits) > 18) { deck.shift(); buildDeck(); drawDeck(); return; }
   const top = document.querySelector('.deckwrap .scard:last-child') || document.querySelector('.scard');
   if (top) { top.style.transform = `translateX(${dir * 560}px) rotate(${dir * 24}deg)`; top.style.opacity = '0'; }
   deckHist.push({o, taken: dir === 1});
