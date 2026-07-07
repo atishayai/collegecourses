@@ -265,6 +265,13 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
 .gx:hover { color:#b91c1c; }
 /* ── swipe deck ── */
 .swipetop { display:flex; align-items:center; gap:12px; max-width:480px; margin:0 auto 6px; }
+#prefbar { display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:center; max-width:520px; margin:0 auto 10px; }
+#prefbar.hidden { display:none; }
+.pchip { display:inline-flex; align-items:center; gap:6px; background:#fff; border:1px solid var(--line2); border-radius:16px; padding:4px 11px; font-size:12.5px; font-weight:600; color:var(--ink2); }
+.pchip button { background:none; border:none; color:var(--mut); font-size:11px; cursor:pointer; padding:0; line-height:1; }
+.pchip button:hover { color:var(--red); }
+.pchip.edit { cursor:pointer; border-style:dashed; color:var(--accent); border-color:var(--accent); background:transparent; }
+.pchip.edit:hover { background:#fff5f5; }
 .crpill { flex:1; height:30px; background:#efeeec; border-radius:16px; position:relative; overflow:hidden; }
 .crpill > div { height:100%; background:linear-gradient(90deg,#16a34a,#4ade80); width:0%; transition:width .4s cubic-bezier(.2,.8,.3,1); border-radius:16px; }
 .crpill span { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:12.5px; font-weight:800; }
@@ -349,6 +356,7 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
     <div class="crpill"><div id="crfill"></div><span id="crlabel">0 / 15 cr</span></div>
     <button class="tunebtn" onclick="document.getElementById('tunerow').classList.toggle('hidden')">Refine</button>
   </div>
+  <div id="prefbar" class="hidden"></div>
   <div id="swipeask" class="hidden" style="text-align:center;padding:70px 20px">
     <h2 style="font-size:26px;font-weight:850;letter-spacing:-.5px;margin-bottom:6px">What are you interested in?</h2>
     <p style="color:var(--ink2);font-size:14px;margin-bottom:16px">Pick a few interests — we'll surface the courses that count for the most.</p>
@@ -990,7 +998,12 @@ window.checks = checks; window.save = save; window.drawProgress = drawProgress;
 // wizard
 let wizStep = 1;
 window.openWiz = s => { wizStep = s; $('#wiz').classList.remove('hidden'); drawWiz(); };
-window.closeWiz = () => { $('#wiz').classList.add('hidden'); saveCfg(); };
+window.closeWiz = () => {
+  $('#wiz').classList.add('hidden');
+  if (cfg.subjects.length) save('vibed', 1);
+  saveCfg();
+  if (DATA.hideNerd) goTab('swipe');
+};
 window.wizNext = () => { wizStep++; drawWiz(); };
 window.wizBack = () => { wizStep--; drawWiz(); };
 window.wizAddSub = c => { cfg.subjects.push(c); drawWiz(); };
@@ -1018,8 +1031,8 @@ function drawWiz() {
     return;
   }
   if (wizStep === 1) {
-    w.innerHTML = dots + `<h2>What are you into?</h2>
-      <p class="sub">Every major, minor, or subject you're even <i>considering</i>. More interests = more double-counting courses found.</p>
+    w.innerHTML = dots + `<h2>What are you interested in?</h2>
+      <p class="sub">Every major, minor, or subject you're even <i>considering</i>. More interests = more double-counting courses found. These preferences drive everything — the course deck, search, and the AI advisor.</p>
       <div class="selchips">${cfg.subjects.map(s => `<span class="schip">${DATA.subjectNames[s]||s}<button onclick="wizRmSub('${s}')">✕</button></span>`).join('')}</div>
       <input class="wizsearch" placeholder="Type to add — “econ”, “music”, “computer science”…" oninput="wizSearch(event)">
       <div class="sugg" id="wizsugg"></div>
@@ -1437,9 +1450,28 @@ window.askGo = () => {
   [OV, OVMAP] = computeOverlaps(); buildDeck(); drawDeck();
   burst(innerWidth / 2, 200, false);
 };
+function drawPrefBar() {
+  const el = $('#prefbar'); if (!el) return;
+  const chips = [];
+  for (const s of cfg.subjects) chips.push(`<span class="pchip">${DATA.subjectNames[s] || s}<button onclick="prefRmSub('${s}')" title="remove">✕</button></span>`);
+  for (const d of cfg.noDays) chips.push(`<span class="pchip">No ${DAYNAMES[d] || d}<button onclick="prefRmDay('${d}')" title="allow this day">✕</button></span>`);
+  if (cfg.earliest) chips.push(`<span class="pchip">After ${Math.floor(cfg.earliest / 60) % 12 || 12}${cfg.earliest < 720 ? 'am' : 'pm'}<button onclick="prefRmTime()" title="any start time">✕</button></span>`);
+  if (cfg.maxDiff) chips.push(`<span class="pchip">Difficulty ≤ ${cfg.maxDiff}/5<button onclick="prefRmDiff()" title="any difficulty">✕</button></span>`);
+  chips.push(`<span class="pchip edit" onclick="openWiz(1)">⚙ Edit preferences</span>`);
+  el.innerHTML = chips.join('');
+}
+function afterPref() {
+  if (!cfg.subjects.length) localStorage.removeItem(KP + 'vibed');
+  save('cfg4', cfg); [OV, OVMAP] = computeOverlaps(); buildDeck(); drawDeck();
+}
+window.prefRmSub = s => { cfg.subjects = cfg.subjects.filter(x => x !== s); afterPref(); };
+window.prefRmDay = d => { cfg.noDays = cfg.noDays.filter(x => x !== d); afterPref(); };
+window.prefRmTime = () => { cfg.earliest = 0; afterPref(); };
+window.prefRmDiff = () => { cfg.maxDiff = 0; afterPref(); };
 function drawDeck() {
   const needAsk = DATA.hideNerd && !store('vibed');
   $('#swipeask').classList.toggle('hidden', !needAsk);
+  const pb = $('#prefbar'); if (pb) { pb.classList.toggle('hidden', needAsk); if (!needAsk) drawPrefBar(); }
   document.querySelector('.deckwrap').style.display = needAsk ? 'none' : '';
   document.querySelector('.deckbtns').style.display = needAsk ? 'none' : '';
   document.querySelector('.swipetop').style.display = needAsk ? 'none' : '';
@@ -1607,6 +1639,115 @@ function roundRect(x, a, b, w, h, r) { x.beginPath(); x.moveTo(a + r, b); x.arcT
 function refresh() { buildReqMap(); drawGrid(); drawFind(); drawPlan(); drawProgress(); drawCmpBar(); buildDeck(); drawDeck(); }
 refresh();
 if (firstRun) goTab('swipe');
+
+// ── AI advisor ──
+let chatMsgs = [];
+window.openChat = () => { $('#fab').classList.add('hidden'); $('#chatp').classList.remove('hidden');
+  if (!chatMsgs.length) {
+    const prefs = cfg.subjects.map(s => DATA.subjectNames[s] || s).join(', ');
+    addMsg('ai', "Hi — I plan around your preferences" + (prefs ? " (" + prefs + (cfg.noDays.length ? ", no " + cfg.noDays.join('/') : "") + ")" : "") + ", your credits, and every Fall 2026 course. Change preferences any time with \u2699 Settings \u2014 I'll pick it up. Try asking:\n\n• \"best schedule for anthro + premed, no Fridays\"\n• \"lighter-workload courses, nothing before 10am\"\n• \"what fills my stats requirement AND my minor?\"");
+  }
+  $('#chatq').focus(); };
+window.closeChat = () => { $('#chatp').classList.add('hidden'); $('#fab').classList.remove('hidden'); };
+function addMsg(who, text, codes) {
+  const log = $('#chatlog');
+  const d = document.createElement('div');
+  d.className = 'cmsg ' + who;
+  d.textContent = text;
+  if (codes && codes.length) {
+    for (const code of codes) {
+      const row = DATA.catalog.find(c => c[0] + ' ' + c[1] === code);
+      if (!row) continue;
+      const rec = document.createElement('div');
+      rec.className = 'crec';
+      rec.innerHTML = `<b>${code}</b> <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row[2]}</span><span style="color:var(--mut)">${row[3]}cr</span><button class="addmini" onclick="togglePop(event,&quot;${esc(code)}&quot;,&quot;${esc(row[2])}&quot;,${credNum(row[3])})">＋ Add</button>`;
+      d.appendChild(rec);
+    }
+  }
+  log.appendChild(d); log.scrollTop = log.scrollHeight;
+}
+function chatContext() {
+  const cand = OV.filter(passes).sort((a, b) => smart(b) - smart(a)).slice(0, 60)
+    .map(o => ({ code: o.code, t: o.title.slice(0, 50), cr: o.credits, counts: o.hits, toward: o.subjects, rating: o.rating || null, difficulty: o.diff || null, meets: (o.days.join(',') || 'TBA') + ' ' + (o.times[0] || '') }));
+  return {
+    interests: cfg.subjects.map(s => DATA.subjectNames[s] || s),
+    rules: { blockedDays: cfg.noDays, earliest: cfg.earliest, latest: cfg.latest, creditsPerSem: cfg.loadMin + '-' + cfg.loadMax },
+    creditsEarned: earnedTotal(), creditsBanked: mycred.map(m => m.code + ' ' + m.title + ' (' + m.cr + 'cr)'),
+    semestersLeft: cfg.semLeft, target: cfg.total,
+    trackedPrograms: tracked.map(p => ({ name: p, slots: (DATA.programs[p]?.items || []).map(i => i.name + (i.options ? ' [' + i.options.join(', ') + ']' : '')) })),
+    currentPlan: Object.fromEntries(semLabels().map((s, i) => [s, plan[i + 1].map(c => c.code)])),
+    unmetRequirements: DATA.audit.filter((r, i) => !(checks['r' + i] !== undefined ? checks['r' + i] : (!cfg.fresh && r.met))).map(r => r.name),
+    topCandidateCourses: cand,
+  };
+}
+async function sendChat() {
+  const q = $('#chatq').value.trim();
+  if (!q) return;
+  $('#chatq').value = '';
+  addMsg('me', q);
+  chatMsgs.push({ role: 'user', content: q });
+  const log = $('#chatlog');
+  const tp = document.createElement('div'); tp.className = 'cmsg ai typing'; tp.innerHTML = '<span></span><span></span><span></span>';
+  log.appendChild(tp); log.scrollTop = log.scrollHeight;
+  try {
+    const r = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: chatMsgs, context: chatContext() }) });
+    const j = await r.json();
+    tp.remove();
+    if (j.error) { addMsg('ai', '⚠️ ' + j.error); return; }
+    let text = j.text || '';
+    let codes = [];
+    const m = text.match(/^COURSES:\s*(.+)$/m);
+    if (m) { codes = m[1].split('|').map(x => x.trim()).filter(Boolean); text = text.replace(m[0], '').trim(); }
+    chatMsgs.push({ role: 'assistant', content: j.text });
+    addMsg('ai', text, codes);
+  } catch (e) {
+    tp.remove();
+    addMsg('ai', location.protocol === 'file:' ? '⚠️ The AI advisor only works on the hosted version (it needs the server API). Deploy to Vercel first!' : '⚠️ Could not reach the advisor: ' + e.message);
+  }
+}
+
+// ── PDF drag & drop on import modal ──
+async function ensurePdfjs() {
+  if (window.pdfjsLib) return;
+  await new Promise((res, rej) => { const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js'; s.onload = res; s.onerror = rej; document.head.appendChild(s); });
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+async function pdfToText(file) {
+  await ensurePdfjs();
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  let out = [];
+  for (let p = 1; p <= Math.min(pdf.numPages, 20); p++) {
+    const page = await pdf.getPage(p);
+    const tc = await page.getTextContent();
+    let line = [], lastY = null;
+    for (const it of tc.items) {
+      if (lastY !== null && Math.abs(it.transform[5] - lastY) > 4) { out.push(line.join(' ')); line = []; }
+      line.push(it.str); lastY = it.transform[5];
+    }
+    out.push(line.join(' '));
+  }
+  return out.join('\n');
+}
+(function wireDrop() {
+  const ta = document.getElementById('imptext');
+  if (!ta) return;
+  ta.classList.add('dropzone');
+  ta.placeholder = 'Paste transcript text here — or drag your PDF onto this box…';
+  ['dragover', 'dragenter'].forEach(ev => ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.add('drag'); }));
+  ['dragleave', 'drop'].forEach(ev => ta.addEventListener(ev, e => { e.preventDefault(); ta.classList.remove('drag'); }));
+  ta.addEventListener('drop', async e => {
+    const f = e.dataTransfer.files[0];
+    if (!f) return;
+    if (f.type === 'application/pdf' || f.name.endsWith('.pdf')) {
+      ta.value = '⏳ reading ' + f.name + '…';
+      try { ta.value = await pdfToText(f); toast('📄 ' + f.name + ' read — hit Import courses'); }
+      catch (err) { ta.value = ''; toast('Could not read that PDF' + (location.protocol === 'file:' ? ' — PDF reading needs the hosted version' : '')); }
+    } else { ta.value = await f.text(); }
+  });
+})();
+
 </script>
 </body>
 </html>
