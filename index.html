@@ -304,8 +304,6 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
 #deckdone .stat span { font-size:11.5px; color:var(--mut); }
 
 /* ── AI advisor chat ── */
-#fab { position:fixed; bottom:22px; right:22px; z-index:70; background:var(--accent); color:#fff; border:none; border-radius:26px; padding:14px 20px; font-size:14px; font-weight:800; box-shadow:0 8px 30px rgba(179,27,27,.35); transition:all .15s; }
-#fab:hover { transform:translateY(-2px); box-shadow:0 12px 36px rgba(179,27,27,.45); }
 #chatp { position:fixed; bottom:22px; right:22px; z-index:80; width:min(400px, calc(100vw - 32px)); height:min(560px, calc(100vh - 90px)); background:#fff; border-radius:20px; box-shadow:0 24px 80px rgba(28,25,23,.35); display:flex; flex-direction:column; overflow:hidden; animation:popIn .18s cubic-bezier(.2,.8,.3,1.05); }
 #chatp .hd { background:var(--accent); color:#fff; padding:13px 17px; display:flex; align-items:center; gap:9px; }
 #chatp .hd b { font-size:14px; }
@@ -462,7 +460,7 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
 </section>
 
 </main>
-<footer style="text-align:center;color:var(--mut);font-size:11.5px;padding:20px 16px 26px;line-height:1.6">Data: official Cornell FA26 class roster · student ratings from CU Reviews · verify final choices with your advisor<br>Not affiliated with Cornell University.</footer>
+<footer style="text-align:center;color:var(--mut);font-size:11.5px;padding:20px 16px 26px;line-height:1.6">Data: official Cornell FA26 class roster · student ratings from CU Reviews · verify final choices with your advisor<br>Savings estimates assume tuition ≈ $2,300/credit (≈ $69k per year ÷ 30 credits) — a course covering N requirements replaces N−1 extra courses.<br>Not affiliated with Cornell University.</footer>
 
 <div id="wiz" class="hidden"><div class="wizcard" id="wizcard"></div></div>
 <div id="cmpbar" class="hidden"><div class="in"></div></div>
@@ -476,7 +474,6 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
   </div>
 </div>
 
-<button id="fab" onclick="openChat()">🎓 Ask the AI advisor</button>
 <div id="chatp" class="hidden">
   <div class="hd"><span style="font-size:19px">🎓</span><div><b>AI Advisor</b><small>knows your credits, plan & all 4,464 FA26 courses</small></div><button class="x" onclick="closeChat()">✕</button></div>
   <div id="chatlog"></div>
@@ -1422,7 +1419,11 @@ function buildDeck() {
     deck = deck.concat(fillers.slice(0, 30 - deck.length));
   }
 }
-function moneyLine(o) { return o.hits > 1 ? 'saves ≈ $' + ((o.hits - 1) * credNum(o.credits) * TUITION_PER_CR).toLocaleString() : ''; }
+function moneyLine(o) {
+  if (o.hits <= 1) return '';
+  const n = o.hits - 1, c = credNum(o.credits), est = n * c * TUITION_PER_CR;
+  return `<span class="money" title="How this is estimated: tuition ≈ $${TUITION_PER_CR.toLocaleString()}/credit (≈ $69k/yr ÷ 30 cr). Covering ${o.hits} requirements with one course replaces ${n} extra ${n === 1 ? 'course' : 'courses'}: ${n} × ${c} cr × $${TUITION_PER_CR.toLocaleString()} = $${est.toLocaleString()}.">saves ≈ $${est.toLocaleString()}</span>`;
+}
 const ASKCHIPS = [['Psych','PSYCH'],['Econ','ECON'],['CS','CS'],['Bio','BIOG'],['Gov','GOVT'],['English','ENGL'],['Philosophy','PHIL'],['Premed','!premed'],['No Fridays','!nofri'],['No 8ams','!no8']];
 let askSel = new Set();
 function drawAskChips() {
@@ -1506,7 +1507,7 @@ function drawDeck() {
       <div class="stats">
         <div class="stat"><b>${cr}</b><span>credits</span></div>
         <div class="stat"><b>${reqs}</b><span>requirements covered</span></div>
-        ${saved > 0 ? `<div class="stat"><b>$${Math.round(saved).toLocaleString()}</b><span>of tuition doing double duty</span></div>` : ''}
+        ${saved > 0 ? `<div class="stat" title="Each course covering N requirements saves (N−1) × its credits × $${TUITION_PER_CR.toLocaleString()}/credit (≈ Cornell tuition per credit). Summed across your picks."><b>$${Math.round(saved).toLocaleString()}</b><span>of tuition doing double duty</span></div>` : ''}
         ${friFree ? '<div class="stat"><b>0</b><span>Friday classes</span></div>' : ''}
       </div>
       <div class="bigrow" style="max-width:420px;margin:0 auto">
@@ -1528,7 +1529,7 @@ function drawDeck() {
     el.style.zIndex = 10 - i;
     el.innerHTML = `
       <div class="stamp take">ADD</div><div class="stamp nah">PASS</div>
-      <div class="kills">${o.hits > 1 ? '✓ Counts toward ' + o.hits + ' requirements<span class="money">' + moneyLine(o) + '</span>' : '★ Strong option in ' + (DATA.subjectNames[o.subjects[0]] || o.subjects[0])}</div>
+      <div class="kills">${o.hits > 1 ? '✓ Counts toward ' + o.hits + ' requirements' + moneyLine(o) : '★ Strong option in ' + (DATA.subjectNames[o.subjects[0]] || o.subjects[0])}</div>
       <h3>${o.title}</h3><div class="code">${o.code} · ${o.credits} credits</div>
       <div class="mid">
         <div class="subjrow">${o.subjects.map(s => `<span class="why">${DATA.subjectNames[s] || s}</span>`).join('')}</div>
@@ -1645,13 +1646,13 @@ if (firstRun) goTab('swipe');
 
 // ── AI advisor ──
 let chatMsgs = [];
-window.openChat = () => { $('#fab').classList.add('hidden'); $('#chatp').classList.remove('hidden');
+window.openChat = () => { $('#chatp').classList.remove('hidden');
   if (!chatMsgs.length) {
     const prefs = cfg.subjects.map(s => DATA.subjectNames[s] || s).join(', ');
     addMsg('ai', "Hi — I plan around your preferences" + (prefs ? " (" + prefs + (cfg.noDays.length ? ", no " + cfg.noDays.join('/') : "") + ")" : "") + ", your credits, and every Fall 2026 course. Change preferences any time with \u2699 Settings \u2014 I'll pick it up. Try asking:\n\n• \"best schedule for anthro + premed, no Fridays\"\n• \"lighter-workload courses, nothing before 10am\"\n• \"what fills my stats requirement AND my minor?\"");
   }
   $('#chatq').focus(); };
-window.closeChat = () => { $('#chatp').classList.add('hidden'); $('#fab').classList.remove('hidden'); };
+window.closeChat = () => { $('#chatp').classList.add('hidden'); };
 function addMsg(who, text, codes) {
   const log = $('#chatlog');
   const d = document.createElement('div');
