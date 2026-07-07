@@ -1288,13 +1288,21 @@ function vibeParse(t) {
   else if (/no 8ams?|hate mornings?|not a morning/.test(q)) out.earliest = 9 * 60;
   if (/chill|easy|light|lazy|relax/.test(q)) out.maxDiff = 2.5;
   if (/evening|night class/.test(q) === false && /done by (\d{1,2})/.test(q)) out.latest = Math.min(12, +q.match(/done by (\d{1,2})/)[1]) * 60 + 720;
+  // topic terms: everything meaningful that ISN'T a subject/day/time keyword — matched against course titles
+  const STOP = new Set(['want','with','without','like','love','hate','class','classes','course','courses','credit','credits','semester','something','anything','maybe','really','pretty','taking','take','learn','learning','about','interested','interest','into','that','this','have','need','some','more','less','also','only','just','dont','cant','wont','before','after','morning','mornings','afternoon','evening','early','late','easy','hard','chill','light','lazy','relax','school','none','nothing','stuff','things','major','minor','requirement','requirements','premed','medical','nothing','free','days','time','times','then','them','from','what','would','could','give','make','want','week','year','fall','please','know']);
+  const DAYWORDS = new Set(['monday','mondays','tuesday','tuesdays','wednesday','wednesdays','thursday','thursdays','friday','fridays']);
+  out.terms = [...new Set(q.replace(/[^a-z\s-]/g, ' ').split(/\s+/)
+    .filter(w => w.length >= 4 && !STOP.has(w) && !DAYWORDS.has(w)
+      && !out.subjects.some(s => (DATA.subjectNames[s] || '').toLowerCase().includes(w))))];
   return out;
 }
 window.vibeCook = () => {
   const t = $('#vibein').value.trim();
   if (t.length < 3) { toast('Name a subject or two — e.g. “psych and econ”'); return; }
   const v = vibeParse(t);
+  DECKTERMS = v.terms || [];
   if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
+  else if (DECKTERMS.length) { const inf = inferSubjects(); if (inf.length) cfg.subjects = inf; }
   if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
   if (v.earliest) cfg.earliest = v.earliest;
   if (v.maxDiff) cfg.maxDiff = v.maxDiff;
@@ -1385,35 +1393,63 @@ function drawGrid() {
 let deck = [], deckHist = [], dragState = null;
 const CR_TARGET = 15, TUITION_PER_CR = 2300;
 function deckAccepted() { return grid.rows.filter(r => r.st); }
+let DECKTERMS = [];
+function termHit(title, sub) {
+  if (!DECKTERMS.length) return 0;
+  const t = (String(title) + ' ' + (DATA.subjectNames[sub] || '')).toLowerCase();
+  let n = 0;
+  for (const w of DECKTERMS) {
+    if (t.includes(w)) n++;
+    else if (w.length > 5 && t.includes(w.slice(0, w.length - 1))) n++;
+  }
+  return n;
+}
+function rowToCard(c) {
+  const code = c[0] + ' ' + c[1];
+  let rating = 0, diff = 0;
+  const R = DATA.ratings[code]; if (R) { rating = R[0]; diff = R[1]; }
+  return {code, allCodes: [code, ...((c[5] || '').split(', ').filter(Boolean))], title: c[2], credits: c[3], lvl: +c[1][0],
+    hits: 1, subjects: [c[0]], days: (c[4] || '').split(', ').filter(Boolean), times: (c[6] || '').split('; ').filter(Boolean),
+    su: c[7], fws: c[8], at: c[9] || [], rating, diff,
+    url: `https://classes.cornell.edu/browse/roster/FA26/class/${c[0]}/${c[1]}`};
+}
 function buildDeck() {
   const acc = deckAccepted();
   const meets = acc.map(r => parseMeets(r.days || [], r.times || []));
   const used = {}; acc.forEach(r => { const s = r.code.split(' ')[0]; used[s] = (used[s] || 0) + 1; });
   const cr = acc.reduce((a, r) => a + r.cr, 0);
-  deck = OV.filter(passes).sort((a, b) => smart(b) - smart(a)).filter(o => {
+  const fits = o => {
     if (acc.some(r => r.code === o.code)) return false;
     if ((used[o.code.split(' ')[0]] || 0) >= 2) return false;
     if (cr + credNum(o.credits) > 18) return false;
     const m = parseMeets(o.days, o.times);
     return !(m.length && meets.some(pm => meetsConflict(pm, m)));
-  }).slice(0, 40);
+  };
+  deck = OV.filter(passes).filter(fits);
+  // free-text topics: pull in title-matching courses from the WHOLE catalog and rank by relevance
+  if (DECKTERMS.length) {
+    const have = new Set([...deck.map(o => o.code), ...acc.map(r => r.code)]);
+    const extra = [];
+    for (const c of DATA.catalog) {
+      if (have.has(c[0] + ' ' + c[1])) continue;
+      if (+c[1][0] > 4 || credNum(c[3]) < 3 || !rowPasses(c)) continue;
+      if (termHit(c[2], c[0]) > 0) { const o = rowToCard(c); if (fits(o)) extra.push(o); }
+      if (extra.length >= 300) break;
+    }
+    deck = deck.concat(extra);
+    deck.sort((a, b) => (termHit(b.title, b.subjects[0]) - termHit(a.title, a.subjects[0])) || (smart(b) - smart(a)));
+  } else {
+    deck.sort((a, b) => smart(b) - smart(a));
+  }
+  deck = deck.slice(0, 40);
   if (deck.length < 10) {
     const have = new Set([...deck.map(o => o.code), ...acc.map(r => r.code)]);
     const fillers = DATA.catalog
       .filter(c => cfg.subjects.includes(c[0]) && +c[1][0] <= 4 && credNum(c[3]) >= 3 && cr + credNum(c[3]) <= 18 && rowPasses(c) && !have.has(c[0] + ' ' + c[1]))
-      .map(c => {
-        const code = c[0] + ' ' + c[1];
-        let rating = 0, diff = 0;
-        const R = DATA.ratings[code]; if (R) { rating = R[0]; diff = R[1]; }
-        return {code, allCodes: [code, ...((c[5] || '').split(', ').filter(Boolean))], title: c[2], credits: c[3], lvl: +c[1][0],
-          hits: 1, subjects: [c[0]], days: (c[4] || '').split(', ').filter(Boolean), times: (c[6] || '').split('; ').filter(Boolean),
-          su: c[7], fws: c[8], at: c[9] || [], rating, diff,
-          url: `https://classes.cornell.edu/browse/roster/FA26/class/${c[0]}/${c[1]}`};
-      })
+      .map(rowToCard)
       .sort((a, b) => (b.rating - a.rating) || (a.lvl - b.lvl))
       .filter(o => {
         const m = parseMeets(o.days, o.times);
-        const meets = acc.map(r => parseMeets(r.days || [], r.times || []));
         return !(m.length && meets.some(pm => meetsConflict(pm, m)));
       });
     deck = deck.concat(fillers.slice(0, 30 - deck.length));
@@ -1445,7 +1481,9 @@ window.askGo = () => {
   if (t.length < 2 && !askSel.size) { toast('Select an interest or type one'); return; }
   const v = vibeParse(t);
   if (!askSel.size && looksLikeQuestion(t, v)) { chatAsk(t); return; }
+  DECKTERMS = v.terms || [];
   if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
+  else if (DECKTERMS.length) { const inf = inferSubjects(); if (inf.length) cfg.subjects = inf; }
   if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
   if (v.earliest) cfg.earliest = v.earliest;
   if (v.maxDiff) cfg.maxDiff = v.maxDiff;
@@ -1585,17 +1623,25 @@ window.chatAsk = q => {
   openChat();
   setTimeout(() => { $('#chatq').value = q; sendChat(); }, 150);
 };
-const looksLikeQuestion = (t, v) => !v.subjects.length && !v.noDays.length && !v.earliest && !v.maxDiff && !v.premed && t.split(/\s+/).length >= 3;
+const looksLikeQuestion = (t, v) => /\?/.test(t) || ((/^(what|which|should|how|why|when|who|can|does|do|is|are)\b/i.test(t.trim()) || /\b(recommend|worth it|better than|versus|vs\.?)\b/i.test(t)) && t.split(/\s+/).length >= 3);
+function inferSubjects() {
+  if (!DECKTERMS.length) return [];
+  const tally = {};
+  for (const c of DATA.catalog) { const n = termHit(c[2], c[0]); if (n) tally[c[0]] = (tally[c[0]] || 0) + n; }
+  return Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 5).map(e => e[0]);
+}
 window.tuneDeck = () => {
   const t = $('#tunein').value.trim(); if (!t) return;
   const v = vibeParse(t);
   if (looksLikeQuestion(t, v)) { $('#tunein').value = ''; chatAsk(t); return; }
+  DECKTERMS = v.terms || [];
   if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
+  else if (DECKTERMS.length) { const inf = inferSubjects(); if (inf.length) cfg.subjects = inf; }
   if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
   if (v.earliest) cfg.earliest = v.earliest;
   if (v.maxDiff) cfg.maxDiff = v.maxDiff;
   save('cfg4', cfg); [OV, OVMAP] = computeOverlaps(); buildDeck(); drawDeck();
-  toast('✓ Filters updated');
+  toast(DECKTERMS.length ? '✓ Showing courses matching “' + DECKTERMS.join(', ') + '”' : '✓ Filters updated');
 };
 window.shareCard = () => {
   const acc = deckAccepted();
