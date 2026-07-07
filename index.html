@@ -352,7 +352,8 @@ table.grid tfoot td { background:var(--bg); font-weight:700; border-top:2px soli
   <div id="swipeask" class="hidden" style="text-align:center;padding:70px 20px">
     <h2 style="font-size:26px;font-weight:850;letter-spacing:-.5px;margin-bottom:6px">what are you into?</h2>
     <p style="color:var(--ink2);font-size:14px;margin-bottom:16px">one answer. then just swipe.</p>
-    <input class="search" id="askin" style="max-width:440px;margin:0 auto;display:block;text-align:center" placeholder="psych · econ · cs · “premed, no fridays”" onkeydown="if(event.key==='Enter')askGo()">
+    <div id="askchips" style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;max-width:480px;margin:0 auto 14px"></div>
+    <input class="search" id="askin" style="max-width:440px;margin:0 auto;display:block;text-align:center" placeholder="or type it — “premed, no fridays”" onkeydown="if(event.key==='Enter')askGo()">
     <button class="bigbtn" style="max-width:220px;margin:14px auto 0;display:block;flex:none" onclick="askGo()">let's go</button>
   </div>
   <div id="tunerow" class="hidden" style="margin:10px auto;max-width:480px;display:flex;gap:8px">
@@ -933,6 +934,7 @@ function drawProgress() {
   $('#credbar').style.width = Math.min(100, tot/cfg.total*100) + '%';
   $('#credlbl').textContent = tot + ' / ' + cfg.total + ' (' + base + ' earned + ' + pcr + ' planned)';
   const tc = $('#topcred'), prev = +(tc.dataset.v || tot);
+  tc.style.display = tot > 0 ? '' : 'none';
   tc.dataset.v = tot;
   if (prev !== tot) {
     const t0 = performance.now(), dur = 500;
@@ -1365,9 +1367,25 @@ function buildDeck() {
   }).slice(0, 40);
 }
 function moneyLine(o) { return o.hits > 1 ? '💸 saves ≈ $' + ((o.hits - 1) * credNum(o.credits) * TUITION_PER_CR).toLocaleString() : ''; }
+const ASKCHIPS = [['Psych','PSYCH'],['Econ','ECON'],['CS','CS'],['Bio','BIOG'],['Gov','GOVT'],['English','ENGL'],['Philosophy','PHIL'],['Premed','!premed'],['No Fridays','!nofri'],['No 8ams','!no8']];
+let askSel = new Set();
+function drawAskChips() {
+  const el = $('#askchips'); if (!el) return;
+  el.innerHTML = ASKCHIPS.map(([label, v]) => `<button class="tog ${askSel.has(v)?'on':''}" style="font-size:14px;padding:9px 16px" onclick="askChip('${v}')">${label}</button>`).join('');
+}
+window.askChip = v => { askSel.has(v) ? askSel.delete(v) : askSel.add(v); drawAskChips(); };
 window.askGo = () => {
-  const t = $('#askin').value.trim();
-  if (t.length < 2) { toast('anything — even one word'); return; }
+  let t = $('#askin').value.trim();
+  if (askSel.size) {
+    const subs = [...askSel].filter(v => !v.startsWith('!'));
+    if (subs.length) cfg.subjects = subs;
+    if (askSel.has('!nofri') && !cfg.noDays.includes('F')) cfg.noDays.push('F');
+    if (askSel.has('!no8')) cfg.earliest = 9 * 60;
+    if (askSel.has('!premed')) t = (t + ' premed').trim();
+    if (!t && !subs.length) t = 'x';
+    if (!t) t = 'x';
+  }
+  if (t.length < 2 && !askSel.size) { toast('tap a chip or type anything'); return; }
   const v = vibeParse(t);
   if (v.subjects.length) cfg.subjects = v.subjects.slice(0, 8);
   if (v.noDays.length) cfg.noDays = [...new Set(v.noDays)];
@@ -1383,7 +1401,7 @@ function drawDeck() {
   document.querySelector('.deckwrap').style.display = needAsk ? 'none' : '';
   document.querySelector('.deckbtns').style.display = needAsk ? 'none' : '';
   document.querySelector('.swipetop').style.display = needAsk ? 'none' : '';
-  if (needAsk) { $('#deckdone').classList.add('hidden'); return; }
+  if (needAsk) { $('#deckdone').classList.add('hidden'); drawAskChips(); return; }
   const acc = deckAccepted();
   const cr = acc.reduce((a, r) => a + r.cr, 0);
   $('#crfill').style.width = Math.min(100, cr / CR_TARGET * 100) + '%';
@@ -1405,6 +1423,7 @@ function drawDeck() {
         <button class="bigbtn" onclick="shareCard()">📸 Get my share card</button>
         <button class="ghost" onclick="goTab('grid')">open the grid →</button>
       </div>
+      ${cr < CR_TARGET ? '<div class="bigrow" style="max-width:280px;margin:8px auto 0"><button class="ghost" onclick="buildDeck();drawDeck()">🔄 run it back — more cards</button></div>' : ''}
       <p class="note">Post the card. Tag a friend who still uses a spreadsheet.</p>`;
     return;
   }
@@ -1507,10 +1526,15 @@ window.shareCard = () => {
   x.fillText(cr + ' credits · ' + reqs + ' reqs killed', 540, y + 90);
   x.font = '600 38px -apple-system, sans-serif'; x.globalAlpha = .75;
   x.fillText('collegecourses.vercel.app', 540, 1830); x.globalAlpha = 1;
-  const a = document.createElement('a');
-  a.download = 'my-semester.png'; a.href = cv.toDataURL('image/png');
-  a.click();
-  toast('📸 saved — post it');
+  cv.toBlob(async blob => {
+    const file = new File([blob], 'my-semester.png', {type: 'image/png'});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      try { await navigator.share({files: [file]}); toast('📸 shared'); return; } catch (e) { if (e.name === 'AbortError') return; }
+    }
+    const a = document.createElement('a');
+    a.download = 'my-semester.png'; a.href = URL.createObjectURL(blob); a.click();
+    toast('📸 saved — post it');
+  });
 };
 function roundRect(x, a, b, w, h, r) { x.beginPath(); x.moveTo(a + r, b); x.arcTo(a + w, b, a + w, b + h, r); x.arcTo(a + w, b + h, a, b + h, r); x.arcTo(a, b + h, a, b, r); x.arcTo(a, b, a + w, b, r); x.closePath(); }
 
